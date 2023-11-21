@@ -157,3 +157,34 @@ final이 없는 필드는 생성자에 포함되지 않습니다.
 Dto에 적용된 롬복이 잘 작동하는지 테스트 코드를 실행해봅니다.
 
 `src/test/java/com/projectName/book/springboot/web/dto/HelloResponseDtoTest`
+
+
+
+```java
+import org.junit.Test;
+import static org.assertj.core.api.Assertions.assertThat;
+
+public class HelloResponseDtoTest { 
+
+    @Test
+    public void lombok_feature_test() {
+        // given
+        String name = "test";
+        int amount = 1000;
+        
+        // when
+        HelloResponseDto dto = new HelloResponseDto(name, amount);
+        
+        // then
+        assertThat(dto.getName()).isEqualTo(name);
+        assertThat(dto.getAmount()).isEqualTo(amount);
+```
+
+
+
+* assertThat
+  * assertj 라는 테스트 검증 라이브러리의 검증 메소드 이다.
+  * 검증하고 싶은 대상을 메소드 인자로 받습니다.
+  * 메소드 체이닝이 지원되어 isEqualTo 와 같이 메소드를 이어서 사용
+* isEqualTo
+  * assertj 의 동등 비교 메소드 이다.
