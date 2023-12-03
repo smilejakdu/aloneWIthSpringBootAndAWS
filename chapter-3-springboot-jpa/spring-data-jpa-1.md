@@ -45,6 +45,231 @@ Autowired 를 사용해서 단위테스트를 진행할 수 있다.&#x20;
 
 
 
+## Mock 과 MockBean 그리고 InjectMocks 차이점
+
+`@Mock`, `@MockBean`, 그리고 `@InjectMocks`는 모두 테스트 환경에서 모의 객체(mock objects)를 생성하고 관리하는 데 사용되지만, 사용되는 컨텍스트와 방식이 다릅니다. 각각의 어노테이션은 다음과 같은 목적으로 사용됩니다:
+
+#### 1. `@Mock` (Mockito 라이브러리)
+
+* `@Mock`은 Mockito 테스팅 프레임워크에서 제공하는 어노테이션입니다.
+* 이 어노테이션은 주로 단위 테스트(unit tests)에서 사용되며, Mockito가 관리하는 모의 객체를 생성합니다.
+* `@Mock`으로 생성된 모의 객체는 주로 `@InjectMocks` 어노테이션이 적용된 클래스에 주입되어 의존성을 모의로 대체합니다.
+* 이러한 모의 객체는 Spring 컨텍스트 밖에서 관리되며, Spring의 빈(bean) 생명주기나 컨텍스트와는 독립적입니다.
+
+#### 2. `@MockBean` (Spring Boot 테스트)
+
+* `@MockBean`은 Spring Boot의 테스트 모듈에서 제공하는 어노테이션입니다.
+* 이 어노테이션은 Spring 애플리케이션 컨텍스트 내에서 관리되는 모의 객체를 생성합니다.
+* `@MockBean`으로 생성된 모의 객체는 Spring 컨텍스트 내의 모든 빈(bean)에 자동으로 주입됩니다.
+* 이는 주로 통합 테스트(integration tests)에서 사용되며, 실제 빈을 모의 객체로 대체하여 테스트 환경에서의 빈의 동작을 제어할 수 있습니다.
+
+#### 3. `@InjectMocks` (Mockito 라이브러리)
+
+* `@InjectMocks`는 Mockito에서 제공하는 어노테이션으로, `@Mock` 또는 `@Spy`로 생성된 모의 객체를 테스트 대상 클래스에 자동으로 주입합니다.
+* 이 어노테이션은 주로 단위 테스트에서 사용되며, 테스트 대상 클래스의 의존성을 모의 객체로 채워 넣는 데 사용됩니다.
+* interface 일 경우 사용할 수 없다. 즉 Repository 에서는 사용할 수 없다.
+* `@InjectMocks`를 사용하면, 테스트 대상 클래스의 생성자, 세터 메소드, 또는 필드 주입을 통해 의존성을 주입할 수 있습니다.
+
+#### 요약
+
+* `@Mock`과 `@InjectMocks`는 Mockito 프레임워크를 사용한 단위 테스트에 주로 사용됩니다.
+* `@MockBean`은 Spring Boot의 테스트 환경에서 Spring 컨텍스트 내의 빈을 모의 객체로 대체할 때 사용됩니다.
+
+```java
+package com.example.showmeyourability.users.application;
+
+import com.example.showmeyourability.teacher.infrastructure.dto.FindTeacherDto.FindByIdTeacherRequestDto;
+import com.example.showmeyourability.users.domain.User;
+import com.example.showmeyourability.users.infrastructure.dto.FindUserDto.FindUserByEmailResponseDto;
+import com.example.showmeyourability.users.infrastructure.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.hibernate.annotations.NotFound;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.webjars.NotFoundException;
+
+@Service
+@RequiredArgsConstructor
+public class FindUserByEmailApplication {
+    private final UserRepository userRepository;
+
+    @Transactional
+    public FindUserByEmailResponseDto execute(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new NotFoundException("해당 유저가 존재하지 않습니다."));
+
+        return FindUserByEmailResponseDto
+                .builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .build();
+    }
+}
+
+```
+
+위와 같은 코드가 존재합니다.
+
+테스트 코드를 작성하려고 합니다.&#x20;
+
+```java
+package com.example.showmeyourability.service.userApplication;
+
+import com.example.showmeyourability.users.application.FindUserByEmailApplication;
+import com.example.showmeyourability.users.domain.GenderType;
+import com.example.showmeyourability.users.domain.User;
+import com.example.showmeyourability.users.infrastructure.dto.FindUserDto.FindUserByEmailResponseDto;
+import com.example.showmeyourability.users.infrastructure.repository.UserRepository;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.data.crossstore.ChangeSetPersister;
+import org.springframework.security.crypto.bcrypt.BCrypt;
+import org.webjars.NotFoundException;
+
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.when;
+
+@SpringBootTest
+public class FindUserApplicationTest {
+    @MockBean // 스프링 부트 테스트에서 사용하는 목(mock) 객체를 생성하는 어노테이션입니다
+    private UserRepository userRepository;
+
+    @Autowired
+    private FindUserByEmailApplication findUserByEmailApplication;
+
+    @BeforeEach // 각 테스트 메소드 실행 전에 호출되는 메소드를 지정
+    public void setup() {
+        String hashedPassword = BCrypt.hashpw("1234", BCrypt.gensalt());
+
+        // User 객체 생성
+        User user1 = User.builder()
+                .id(1L)
+                .email("robertvsd1@gmail.com")
+                .genderType(GenderType.MALE)
+                .age(20)
+                .img("img")
+                .password(hashedPassword)
+                .build();
+
+        User user2 = User.builder()
+                .id(2L)
+                .email("robertvsd2@gmail.com")
+                .genderType(GenderType.MALE)
+                .age(20)
+                .img("img_two")
+                .password(hashedPassword)
+                .build();
+
+        // userRepository.findById에 대한 모의 동작 정의
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user1));
+        when(userRepository.findById(2L)).thenReturn(Optional.of(user2));
+    }
+
+
+    @Test
+    public void notFoundUserByEmailTest() {
+        // given
+        String notFoundEmail = "nonexistentemail@example.com";
+
+        // userRepository.findByEmail에 대한 모의 동작 정의
+        // 이메일로 사용자를 찾을 수 없을 때 빈 Optional 반환
+        when(userRepository.findByEmail(notFoundEmail)).thenReturn(Optional.empty());
+
+        // then
+        assertThrows(NotFoundException.class, () -> {
+            // when
+            findUserByEmailApplication.execute(notFoundEmail);
+        });
+    }
+}
+
+```
+
+위에서 MockBean 대신 InjectMocks 를 하게 되면 에러가 발생합니다.
+
+왜 에러가 발생할까요 ??
+
+`@InjectMocks`는 Mockito 테스트 환경에서 사용되므로, Spring 컨텍스트에 의해 관리되는 빈과는 별개로 작동합니다. 따라서, `@InjectMocks`를 사용하면 `FindUserByEmailApplication` 인스턴스가 Spring 컨텍스트에 의해 생성되고 관리되지 않습니다.
+
+그래서 InjectMocks 를 사용한다면 Mock 과 같이사용하게 됩니다.
+
+## Mock 과 InjectMocks
+
+단위 테스트(Unit Test)를 수행할 때는 테스트 대상 클래스의 기능을 독립적으로 검증하는 것이 중요합니다. 이를 위해 테스트 대상 클래스가 의존하는 다른 컴포넌트들을 모의 객체(Mock Objects)로 대체하는 것이 일반적입니다. 이 경우, Mockito와 같은 모킹 프레임워크를 사용하여 의존성을 모의 객체로 대체할 수 있습니다.
+
+#### 단위 테스트에서 사용하는 주요 어노테이션:
+
+1. **`@Mock`:** Mockito 프레임워크를 사용하여 의존성에 대한 모의 객체를 생성합니다. `@Mock` 어노테이션은 테스트 대상 클래스가 의존하는 컴포넌트에 대한 모의 객체를 만들 때 사용됩니다.
+2. **`@InjectMocks`:** `@InjectMocks` 어노테이션은 Mockito가 관리하는 모의 객체들을 테스트 대상 클래스에 자동으로 주입합니다. 이는 테스트 대상 클래스가 생성될 때 `@Mock`으로 생성된 모의 객체들을 해당 클래스의 필드에 주입하는 데 사용됩니다.
+3. **`@ExtendWith(MockitoExtension.class)`:** JUnit 5에서 Mockito를 사용할 때, 이 어노테이션을 테스트 클래스에 추가하여 Mockito의 초기화와 통합을 관리합니다.
+
+#### 단위 테스트 예시:
+
+```java
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+public class MyServiceTest {
+
+    @Mock
+    private DependencyRepository dependencyRepository;
+
+    @InjectMocks
+    private MyService myService;
+
+    @Test
+    public void testMyServiceMethod() {
+        // 여기서 dependencyRepository의 메소드를 모의로 정의하고
+        // myService의 메소드를 테스트합니다.
+    }
+}
+```
+
+이 예시에서 `MyService`는 `DependencyRepository`에 의존하고 있습니다. `@Mock` 어노테이션을 사용하여 `DependencyRepository`의 모의 객체를 생성하고, `@InjectMocks`를 사용하여 이 모의 객체를 `MyService`에 주입합니다. 이렇게 하면 `MyService`의 메소드를 독립적으로 테스트할 수 있습니다.
+
+#### 결론
+
+단위 테스트에서는 `@Mock`과 `@InjectMocks`를 사용하여 의존성을 모의 객체로 대체하고, 테스트 대상 클래스의 기능을 독립적으로 검증하는 것이 좋습니다. 이 방법은 테스트 대상 클래스가 외부 컴포넌트와의 상호작용 없이 올바르게 작동하는지 확인하는 데 도움이 됩니다.
+
+
+
+## MockBean 과 Autowired
+
+물론이죠, `@InjectMocks`와 관련된 동작에 대해 더 자세히 설명드리겠습니다.
+
+#### `@InjectMocks`의 작동 방식
+
+`@InjectMocks`는 Mockito 테스팅 프레임워크에서 제공하는 어노테이션으로, 지정된 클래스의 인스턴스를 생성하고, 이 클래스에 필요한 의존성들을 Mockito가 생성한 모의(Mock) 객체로 자동 주입합니다. 이는 주로 단위 테스트(unit tests)에서 사용되며, 테스트 대상 클래스가 의존하는 다른 컴포넌트들을 모의 객체로 대체하여, 테스트 대상 클래스의 기능을 독립적으로 검증할 수 있게 해줍니다.
+
+#### `userRepository`의 모의 객체 생성
+
+예를 들어, `FindUserByEmailApplication` 클래스가 `UserRepository`에 의존하고 있다고 가정해 보겠습니다. `@InjectMocks`를 사용하여 `FindUserByEmailApplication`의 인스턴스를 생성하면, Mockito는 `UserRepository`의 모의 객체를 생성하고, 이를 `FindUserByEmailApplication` 인스턴스에 주입합니다.
+
+#### 문제 발생 가능성
+
+이 접근 방식에서 문제가 발생하는 경우는 주로 통합 테스트(integration tests)에서 발생합니다. 통합 테스트의 목적은 애플리케이션의 다양한 컴포넌트들이 실제 환경과 유사한 조건에서 어떻게 상호작용하는지를 검증하는 것입니다. 이 경우, 실제 `UserRepository`와 같은 Spring 데이터 리포지토리의 실제 동작을 테스트하는 것이 중요합니다.
+
+* **실제 동작과의 차이:** `@InjectMocks`를 사용하면 `UserRepository`의 실제 동작이 아닌, Mockito가 생성한 모의 객체의 동작을 테스트하게 됩니다. 이 모의 객체는 실제 데이터베이스와의 상호작용을 모방하지 않으므로, 데이터베이스와 관련된 실제 동작의 정확성을 검증할 수 없습니다.
+* **테스트 정확성 저하:** 모의 객체를 사용하면 데이터베이스 연결, 트랜잭션 관리, JPA/Hibernate와 같은 ORM 도구의 동작 등 실제 애플리케이션에서 발생할 수 있는 다양한 상황들을 완전히 재현할 수 없습니다. 따라서, 모의 객체를 사용하는 테스트는 실제 애플리케이션의 동작을 완벽하게 반영하지 못할 수 있으며, 이는 테스트의 정확성을 저하시킬 수 있습니다.
+
+#### 결론
+
+따라서, 통합 테스트에서는 `@MockBean`과 `@Autowired`를 함께 사용하는 것이 권장됩니다. `@MockBean`을 사용하면 Spring 컨텍스트 내의 특정 빈을 모의 객체로 대체할 수 있으며, `@Autowired`를 사용하면 테스트 대상 클래스에 실제 빈을 주입할 수 있습니다. 이 방법은 Spring 컨텍스트와의 일관성을 유지하면서 필요한 부분에 대해서만 모의 동작을 정의할 수 있게 해줍니다.
+
+## H2 인메모리 테스트
+
 ```java
 package com.jojoldu.book.springboot.domain.posts;
 
@@ -171,3 +396,191 @@ Gradle의 `build.gradle` 파일에 `testImplementation 'com.h2database:h2'`를 �
 
 즉, `build.gradle`에 의존성을 추가하는 것은 해당 라이브러리를 프로젝트에서 사용할 수 있도록 하는 것이며, 실제 어떤 데이터베이스를 사용할지는 애플리케이션의 설정 파일에서 결정됩니다.
 
+
+
+## 테스트 코드 연습
+
+```java
+package com.example.showmeyourability.users.application;
+
+import com.example.showmeyourability.users.domain.User;
+import com.example.showmeyourability.users.infrastructure.dto.FindUserDto.FindUserByEmailResponseDto;
+import com.example.showmeyourability.users.infrastructure.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.webjars.NotFoundException;
+
+@Service
+@RequiredArgsConstructor
+public class FindUserByEmailApplication {
+    private final UserRepository userRepository;
+
+    @Transactional
+    public FindUserByEmailResponseDto execute(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new NotFoundException("해당 유저가 존재하지 않습니다."));
+
+        FindUserByEmailResponseDto responseDto = new FindUserByEmailResponseDto();
+        responseDto.setEmail(user.getEmail());
+
+        return responseDto;
+    }
+}
+
+```
+
+라는 코드를 만들고 싶어한다.
+
+테스트 코드를 우선 작성해야한다.&#x20;
+
+```java
+package com.example.showmeyourability.service.userApplication;
+
+import com.example.showmeyourability.users.application.FindUserByEmailApplication;
+import com.example.showmeyourability.users.domain.GenderType;
+import com.example.showmeyourability.users.domain.User;
+import com.example.showmeyourability.users.infrastructure.dto.FindUserDto.FindUserByEmailResponseDto;
+import com.example.showmeyourability.users.infrastructure.repository.UserRepository;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.security.crypto.bcrypt.BCrypt;
+import org.webjars.NotFoundException;
+
+import java.util.Optional;
+
+import static org.mockito.Mockito.when;
+
+@SpringBootTest
+public class FindUserApplicationTest {
+    @MockBean // 스프링 부트 테스트에서 사용하는 목(mock) 객체를 생성하는 어노테이션입니다
+    private UserRepository userRepository;
+
+    @MockBean
+    private FindUserByEmailApplication findUserByEmailApplication;
+
+    @BeforeEach // 각 테스트 메소드 실행 전에 호출되는 메소드를 지정
+    public void setup() {
+        String hashedPassword = BCrypt.hashpw("1234", BCrypt.gensalt());
+
+        // User 객체 생성
+        User user1 = User.builder()
+                .id(1L)
+                .email("robertvsd1@gmail.com")
+                .genderType(GenderType.MALE)
+                .age(20)
+                .img("img")
+                .password(hashedPassword)
+                .build();
+
+        User user2 = User.builder()
+                .id(2L)
+                .email("robertvsd2@gmail.com")
+                .genderType(GenderType.MALE)
+                .age(20)
+                .img("img_two")
+                .password(hashedPassword)
+                .build();
+
+        // userRepository.findById에 대한 모의 동작 정의
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user1));
+        when(userRepository.findById(2L)).thenReturn(Optional.of(user2));
+    }
+
+
+    @Test
+    public void testFindUserByEmailNotExists() {
+ 
+    }
+    
+    @Test
+    public void successTestFindUserByEmail() {
+    
+    }
+}
+
+```
+
+우선 실패케이스부터 작성한다.
+
+```java
+package com.example.showmeyourability.service.userApplication;
+
+import com.example.showmeyourability.users.application.FindUserByEmailApplication;
+import com.example.showmeyourability.users.domain.GenderType;
+import com.example.showmeyourability.users.domain.User;
+import com.example.showmeyourability.users.infrastructure.dto.FindUserDto.FindUserByEmailResponseDto;
+import com.example.showmeyourability.users.infrastructure.repository.UserRepository;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.security.crypto.bcrypt.BCrypt;
+import org.webjars.NotFoundException;
+
+import java.util.Optional;
+
+import static org.mockito.Mockito.when;
+
+@SpringBootTest
+public class FindUserApplicationTest {
+    @MockBean // 스프링 부트 테스트에서 사용하는 목(mock) 객체를 생성하는 어노테이션입니다
+    private UserRepository userRepository;
+
+    @MockBean
+    private FindUserByEmailApplication findUserByEmailApplication;
+
+    @BeforeEach // 각 테스트 메소드 실행 전에 호출되는 메소드를 지정
+    public void setup() {
+        String hashedPassword = BCrypt.hashpw("1234", BCrypt.gensalt());
+
+        // User 객체 생성
+        User user1 = User.builder()
+                .id(1L)
+                .email("robertvsd1@gmail.com")
+                .genderType(GenderType.MALE)
+                .age(20)
+                .img("img")
+                .password(hashedPassword)
+                .build();
+
+        User user2 = User.builder()
+                .id(2L)
+                .email("robertvsd2@gmail.com")
+                .genderType(GenderType.MALE)
+                .age(20)
+                .img("img_two")
+                .password(hashedPassword)
+                .build();
+
+        // userRepository.findById에 대한 모의 동작 정의
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user1));
+        when(userRepository.findById(2L)).thenReturn(Optional.of(user2));
+    }
+
+
+    @Test
+    public void testFindUserByEmailNotExists() {
+     // given
+     String notFoundEmail = "doesnotFoundEmail@gmail.com"
+     // when
+     when(findUserByEmailApplication.execute(notFoundEmail))
+             .thenThrow(new NotFoundException("해당 유저가 존재하지 않습니다."));
+     // then
+     assertThrows(NotFoundException.class, () -> {
+             findUserByEmailApplication.execute(notFoundEmail);
+    }
+    
+    @Test
+    public void successTestFindUserByEmail() {
+    
+    }
+}
+
+```

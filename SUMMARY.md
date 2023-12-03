@@ -7,5 +7,6 @@
   * [JPA 소개](chapter-3-springboot-jpa/jpa.md)
   * [Spring Data Jpa 적용](chapter-3-springboot-jpa/spring-data-jpa.md)
   * [Spring Data JPA 테스트 코드](chapter-3-springboot-jpa/spring-data-jpa-1.md)
+  * [Test Driven Development in Spring](chapter-3-springboot-jpa/test-driven-development-in-spring.md)
 * [Chapter 4 머스테치로 화면 구성하기](chapter-4.md)
 * [Chapter 5 스프링 스큐리티와 스프링 스큐리티 Oauth2 클라이언트](chapter-5-oauth2.md)
